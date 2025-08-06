@@ -36,7 +36,9 @@ type ginServer struct {
 func Start(state *core.State) {
 	var gin *gin.Engine
 	var config config.Config
-	var server ginServer
+	var server = ginServer{
+		Port: 8080,
+	}
 	state.Use(&gin)
 	state.Use(&config)
 	config.LoadToStruct("server", &server)

@@ -16,7 +16,6 @@ type Config map[string]interface{}
 
 var (
 	arrayKeyRegexp = regexp.MustCompile(`^(\w+)\[(\d+)\]$`)
-	globalConfig   = make(Config)
 )
 
 func (c Config) LoadProperties(path string) (Config, error) {
@@ -26,13 +25,14 @@ func (c Config) LoadProperties(path string) (Config, error) {
 func mustLoadProperties(path string) Config {
 	cfg, err := loadProperties(path)
 	if err != nil {
-		panic(err)
+		// 配置文件读取失败时返回空配置，不再panic
+		return make(Config)
 	}
 	return cfg
 }
 
 func (c Config) LoadToStruct(prefix string, cfg interface{}) {
-	if err := loadToStruct(prefix, cfg); err != nil {
+	if err := c.loadToStruct(prefix, cfg); err != nil {
 		panic(err)
 	}
 }
@@ -42,10 +42,7 @@ func (c Config) LoadToStruct(prefix string, cfg interface{}) {
 // 1. 数组格式: datasource.mysql[0].host=127.0.0.1
 // 2. Map格式: datasource.mysql.abc.host=127.0.0.1
 func loadProperties(path string) (Config, error) {
-	if len(globalConfig) > 0 {
-		return globalConfig, nil
-	}
-	cfg := globalConfig
+	cfg := make(Config)
 
 	// 获取绝对路径
 	abspath, err := filepath.Abs(path)
@@ -56,7 +53,8 @@ func loadProperties(path string) (Config, error) {
 	// 打开文件
 	file, err := os.Open(abspath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open config file: %v", err)
+		// 文件不存在时返回空配置，不报错
+		return cfg, nil
 	}
 	defer file.Close()
 
@@ -204,9 +202,9 @@ func loadProperties(path string) (Config, error) {
 }
 
 // GetSection 获取配置的子节
-func (c Config) GetSection(key string) (Config, bool) {
+func (c Config) GetSection(key string) Config {
 	if key == "" {
-		return c, true
+		return c
 	}
 
 	keys := strings.Split(key, ".")
@@ -215,24 +213,24 @@ func (c Config) GetSection(key string) (Config, bool) {
 	for _, k := range keys {
 		val, exists := current[k]
 		if !exists {
-			return nil, false
+			return nil
 		}
 
 		if next, ok := val.(Config); ok {
 			current = next
 		} else {
-			return nil, false
+			return nil
 		}
 	}
 
-	return current, true
+	return current
 }
 
 // GetArray 获取数组配置
 // 例如：datasource.mysql[0].host=127.0.0.1
-func (c Config) GetArray(key string) ([]interface{}, bool) {
+func (c Config) GetArray(key string) []interface{} {
 	if key == "" {
-		return nil, false
+		return nil
 	}
 
 	keys := strings.Split(key, ".")
@@ -242,13 +240,13 @@ func (c Config) GetArray(key string) ([]interface{}, bool) {
 	for i := 0; i < len(keys)-1; i++ {
 		val, exists := current[keys[i]]
 		if !exists {
-			return nil, false
+			return nil
 		}
 
 		if next, ok := val.(Config); ok {
 			current = next
 		} else {
-			return nil, false
+			return nil
 		}
 	}
 
@@ -256,22 +254,22 @@ func (c Config) GetArray(key string) ([]interface{}, bool) {
 	lastKey := keys[len(keys)-1]
 	val, exists := current[lastKey]
 	if !exists {
-		return nil, false
+		return nil
 	}
 
 	arr, ok := val.([]interface{})
 	if !ok {
-		return nil, false
+		return nil
 	}
 
-	return arr, true
+	return arr
 }
 
 // GetMap 获取Map配置
 // 例如：datasource.mysql.abc.host=127.0.0.1
-func (c Config) getMap(key string) (map[string]interface{}, bool) {
+func (c Config) GetMap(key string) map[string]interface{} {
 	if key == "" {
-		return nil, false
+		return nil
 	}
 
 	keys := strings.Split(key, ".")
@@ -281,13 +279,13 @@ func (c Config) getMap(key string) (map[string]interface{}, bool) {
 	for i := 0; i < len(keys)-1; i++ {
 		val, exists := current[keys[i]]
 		if !exists {
-			return nil, false
+			return nil
 		}
 
 		if next, ok := val.(Config); ok {
 			current = next
 		} else {
-			return nil, false
+			return nil
 		}
 	}
 
@@ -295,7 +293,7 @@ func (c Config) getMap(key string) (map[string]interface{}, bool) {
 	lastKey := keys[len(keys)-1]
 	val, exists := current[lastKey]
 	if !exists {
-		return nil, false
+		return nil
 	}
 
 	result := make(map[string]interface{})
@@ -303,10 +301,10 @@ func (c Config) getMap(key string) (map[string]interface{}, bool) {
 		for k, v := range config {
 			result[k] = v
 		}
-		return result, true
+		return result
 	}
 
-	return nil, false
+	return nil
 }
 
 // LoadToStruct 加载配置到指定结构体
@@ -315,7 +313,7 @@ func (c Config) getMap(key string) (map[string]interface{}, bool) {
 // 支持两种格式：
 // 1. 数组格式: datasource.mysql[0].host=127.0.0.1
 // 2. Map格式: datasource.mysql.abc.host=127.0.0.1
-func loadToStruct(prefix string, cfg interface{}) error {
+func (c Config) loadToStruct(prefix string, cfg interface{}) error {
 	v := reflect.ValueOf(cfg)
 	if v.Kind() != reflect.Ptr || v.IsNil() {
 		return fmt.Errorf("config must be a non-nil pointer to struct or slice of struct pointers")
@@ -331,13 +329,8 @@ func loadToStruct(prefix string, cfg interface{}) error {
 			return fmt.Errorf("slice elements must be pointers to struct")
 		}
 
-		// 获取全局配置中对应的数组配置
-		if len(globalConfig) == 0 {
-			return fmt.Errorf("no configuration loaded, call LoadProperties first")
-		}
-
 		// 获取前缀对应的配置
-		var configData interface{} = globalConfig
+		var configData interface{} = c
 		if prefix != "" {
 			keys := strings.Split(prefix, ".")
 			for _, key := range keys {
@@ -345,10 +338,12 @@ func loadToStruct(prefix string, cfg interface{}) error {
 					if val, exists := m[key]; exists {
 						configData = val
 					} else {
-						return fmt.Errorf("configuration key not found: %s", prefix)
+						// 配置读不出来返回空值，不报错
+						return nil
 					}
 				} else {
-					return fmt.Errorf("invalid configuration structure at key: %s", key)
+					// 配置读不出来返回空值，不报错
+					return nil
 				}
 			}
 		}
@@ -382,7 +377,8 @@ func loadToStruct(prefix string, cfg interface{}) error {
 			return nil
 		}
 
-		return fmt.Errorf("configuration is not an array: %s", prefix)
+		// 配置读不出来返回空值，不报错
+		return nil
 	}
 
 	// 处理 map 类型
@@ -403,12 +399,8 @@ func loadToStruct(prefix string, cfg interface{}) error {
 			return fmt.Errorf("map values must be structs or pointers to struct")
 		}
 
-		// 获取全局配置中对应的配置
 		// 获取前缀对应的配置
-		current := globalConfig
-		if len(current) == 0 {
-			return fmt.Errorf("no configuration loaded, call LoadProperties first")
-		}
+		current := c
 
 		if prefix != "" {
 			keys := strings.Split(prefix, ".")
@@ -417,10 +409,12 @@ func loadToStruct(prefix string, cfg interface{}) error {
 					if cfg, ok := val.(Config); ok {
 						current = cfg
 					} else {
-						return fmt.Errorf("invalid configuration structure at key: %s", key)
+						// 配置读不出来返回空值，不报错
+						return nil
 					}
 				} else {
-					return fmt.Errorf("configuration key not found: %s", prefix)
+					// 配置读不出来返回空值，不报错
+					return nil
 				}
 			}
 		}
@@ -466,11 +460,7 @@ func loadToStruct(prefix string, cfg interface{}) error {
 		return fmt.Errorf("config must be a pointer to struct, slice of struct pointers, or map of structs")
 	}
 
-	current := globalConfig
-	// 获取全局配置中对应的配置
-	if len(current) == 0 {
-		return fmt.Errorf("no configuration loaded, call LoadProperties first")
-	}
+	current := c
 
 	// 获取前缀对应的配置
 	if prefix != "" {
@@ -480,10 +470,12 @@ func loadToStruct(prefix string, cfg interface{}) error {
 				if cfg, ok := val.(Config); ok {
 					current = cfg
 				} else {
-					return fmt.Errorf("invalid configuration structure at key: %s", key)
+					// 配置读不出来返回空值，不报错
+					return nil
 				}
 			} else {
-				return fmt.Errorf("configuration key not found: %s", prefix)
+				// 配置读不出来返回空值，不报错
+				return nil
 			}
 		}
 	}
@@ -647,6 +639,102 @@ func setStructFields(cfg Config, v reflect.Value) error {
 					fieldVal.SetFloat(f)
 				}
 			}
+		}
+	}
+
+	return nil
+}
+
+// GetString 获取字符串配置值
+func (c Config) GetString(key string) string {
+	val := c.getValue(key)
+	if val == nil {
+		return ""
+	}
+	return fmt.Sprint(val)
+}
+
+// GetInt 获取整数配置值
+func (c Config) GetInt(key string) int {
+	val := c.getValue(key)
+	if val == nil {
+		return 0
+	}
+
+	switch v := val.(type) {
+	case int:
+		return v
+	case float64:
+		return int(v)
+	case string:
+		if i, err := strconv.Atoi(v); err == nil {
+			return i
+		}
+	}
+	return 0
+}
+
+// GetBool 获取布尔配置值
+func (c Config) GetBool(key string) bool {
+	val := c.getValue(key)
+	if val == nil {
+		return false
+	}
+
+	switch v := val.(type) {
+	case bool:
+		return v
+	case string:
+		return strings.ToLower(v) == "true" || v == "1"
+	}
+	return false
+}
+
+// GetFloat 获取浮点数配置值
+func (c Config) GetFloat(key string) float64 {
+	val := c.getValue(key)
+	if val == nil {
+		return 0.0
+	}
+
+	switch v := val.(type) {
+	case float64:
+		return v
+	case int:
+		return float64(v)
+	case string:
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
+		}
+	}
+	return 0.0
+}
+
+// getValue 获取配置值的内部方法
+func (c Config) getValue(key string) interface{} {
+	if key == "" {
+		return nil
+	}
+
+	keys := strings.Split(key, ".")
+	current := c
+
+	for i, k := range keys {
+		val, exists := current[k]
+		if !exists {
+			return nil
+		}
+
+		// 如果是最后一个键，直接返回值
+		if i == len(keys)-1 {
+			return val
+		}
+
+		// 继续深入下一层
+		if next, ok := val.(Config); ok {
+			current = next
+		} else {
+			return nil
 		}
 	}
 

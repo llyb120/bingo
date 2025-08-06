@@ -12,6 +12,9 @@ fi
 NEW_VERSION=$1
 REPO_PREFIX="github.com/llyb120/bingo"
 
+# Declare an array to hold tags
+declare -a TAGS
+
 # Function to update a single go.mod file
 update_go_mod() {
     local modfile=$1
@@ -74,6 +77,9 @@ update_go_mod() {
     
     # Replace the original file
     mv "$tmpfile" "$modfile"
+
+    # Add tag name to array for later creation
+    TAGS+=("${mod_name}/${NEW_VERSION}")
 }
 
 # Find all go.mod files
@@ -84,3 +90,22 @@ done
 echo "All requires updated to $NEW_VERSION"
 echo "Running tidy.sh..."
 bash tidy.sh
+
+echo "Staging changes..."
+git add .
+
+echo "Committing changes..."
+git commit -m "chore: Update module dependencies to ${NEW_VERSION}"
+
+echo "Creating tags..."
+for tag in "${TAGS[@]}"; do
+    echo "Creating tag: $tag"
+    git tag "$tag"
+done
+
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+echo "Pushing commits to origin/$CURRENT_BRANCH..."
+git push origin "$CURRENT_BRANCH"
+
+echo "Pushing all tags..."
+git push --tags

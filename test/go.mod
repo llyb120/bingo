@@ -4,10 +4,11 @@ go 1.24.5
 
 require (
 	github.com/gin-gonic/gin v1.10.1
-	github.com/llyb120/bingo/config v0.0.0
-	github.com/llyb120/bingo/core v0.0.0
-	github.com/llyb120/bingo/datasource/mysql v0.0.0-00010101000000-000000000000
-	github.com/llyb120/bingo/web/ginx v0.0.0
+	github.com/llyb120/bingo/config v0.0.1
+	github.com/llyb120/bingo/core v0.0.1
+	github.com/llyb120/bingo/datasource/mysql v0.0.1
+	github.com/llyb120/bingo/web/ginx v0.0.1
+
 )
 
 require (

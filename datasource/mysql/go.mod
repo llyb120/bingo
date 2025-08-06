@@ -4,8 +4,9 @@ go 1.24.5
 
 require (
 	github.com/go-sql-driver/mysql v1.9.3
-	github.com/llyb120/bingo/config v0.0.0
-	github.com/llyb120/bingo/core v0.0.0
+	github.com/llyb120/bingo/config v0.0.1
+	github.com/llyb120/bingo/core v0.0.1
+
 )
 
 replace (

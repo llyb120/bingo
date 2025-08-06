@@ -1,0 +1,1 @@
+find . -name "go.mod" -type f -exec sh -c 'echo "处理 $1" && (cd "$(dirname "$1")" && go mod tidy)' _ {} \;

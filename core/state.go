@@ -25,6 +25,10 @@ type State struct {
 	waitingFor map[int64]any
 	// 记录等待goid的通知channel
 	waitChans map[int64]chan struct{}
+
+	// 事件订阅
+	eventMap      map[string][]EventHandler
+	eventMapMutex sync.RWMutex
 }
 
 func newState() *State {
@@ -34,6 +38,8 @@ func newState() *State {
 		bootPhase:   true,
 		waitingFor:  make(map[int64]any),
 		waitChans:   make(map[int64]chan struct{}),
+
+		eventMap: make(map[string][]EventHandler),
 	}
 }
 

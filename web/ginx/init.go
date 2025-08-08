@@ -47,7 +47,7 @@ func Start(state *core.State) {
 		Addr:    fmt.Sprintf(":%d", server.Port),
 		Handler: gin,
 	}
-	log.Printf("[info] start http server listening %s", server.Port)
+	log.Printf("[info] start http server listening %d", server.Port)
 
 	err := s.ListenAndServe()
 	if err != nil {

@@ -4,28 +4,87 @@ import (
 	"reflect"
 )
 
-func ExportFunc[T any](state *State, target *T, source T) {
+// FuncCall 表示一次通过 ExportFuncNamed 导出的函数调用
+// 订阅者可在 before/after 事件中读取或修改调用
+type FuncCall struct {
+	Name   string
+	State  *State
+	Args   []any
+	Result []any
+	// 若在 before 阶段设置为 true，将跳过原函数调用，直接使用 Result 作为返回
+	Skip bool
+}
+
+// ExportFuncNamed 通过 name 导出函数，并在调用前后发布事件：before:<name> / after:<name>
+// 监听者可通过 *FuncCall 控制跳过原始调用或替换返回值，实现与调用方完全解耦
+func ExportFunc[T any](state *State, name string, target *T, source T) {
 	targetVal := reflect.ValueOf(target)
 	sourceVal := reflect.ValueOf(source)
 
-	// 检查 source 是否是函数
 	if sourceVal.Kind() != reflect.Func {
 		panic("source must be a function")
 	}
 
-	// 创建代理函数
+	fnType := sourceVal.Type()
+
+	// 将 []any 转换为目标函数签名的返回值切片
+	toTypedReturns := func(results []any) []reflect.Value {
+		out := make([]reflect.Value, fnType.NumOut())
+		for i := 0; i < fnType.NumOut(); i++ {
+			expected := fnType.Out(i)
+			if i < len(results) && results[i] != nil {
+				rv := reflect.ValueOf(results[i])
+				if !rv.IsValid() {
+					out[i] = reflect.Zero(expected)
+				} else if rv.Type().AssignableTo(expected) {
+					out[i] = rv
+				} else if rv.Type().ConvertibleTo(expected) {
+					out[i] = rv.Convert(expected)
+				} else if expected.Kind() == reflect.Interface && rv.Type().Implements(expected) {
+					out[i] = rv
+				} else {
+					out[i] = reflect.Zero(expected)
+				}
+			} else {
+				out[i] = reflect.Zero(expected)
+			}
+		}
+		return out
+	}
+
 	proxyFunc := func(in []reflect.Value) []reflect.Value {
-		// 在实际调用前可以添加一些逻辑，比如日志、参数校验等
-		// 调用原始函数
+		// 构造事件上下文
+		args := make([]any, len(in))
+		for i := range in {
+			args[i] = in[i].Interface()
+		}
+		call := &FuncCall{Name: name, State: state, Args: args}
+
+		// before
+		state.Publish("before:"+name, call)
+		if call.Skip {
+			return toTypedReturns(call.Result)
+		}
+
+		// 原始调用
 		results := sourceVal.Call(in)
+
+		// after（允许替换返回值）
+		resAny := make([]any, len(results))
+		for i := range results {
+			resAny[i] = results[i].Interface()
+		}
+		call.Result = resAny
+		state.Publish("after:"+name, call)
+
+		// 如 after 修改了 Result，则以修改后的为准
+		if call.Result != nil {
+			return toTypedReturns(call.Result)
+		}
 		return results
 	}
 
-	// 创建与 source 函数相同类型的函数
-	fnType := reflect.TypeOf(source)
 	fn := reflect.MakeFunc(fnType, proxyFunc).Interface()
-
-	// 将生成的函数赋值给 target
 	targetElem := targetVal.Elem()
 	if !targetElem.CanSet() {
 		panic("target is not settable")
@@ -83,3 +142,11 @@ func ExportInstance(s *State, instance any, args ...RegisterOption) {
 	}
 	s.mu.Unlock()
 }
+
+// func Around[T any](state *State, sourceFn T, fn func(next T)) {
+// 	state.aroundConfig.aroundMu.Lock()
+// 	// 以原始函数的指针唯一标识（仅 ExportFunc 导出的函数可被注册）
+// 	key := reflect.ValueOf(sourceFn).Pointer()
+// 	state.aroundConfig.aroundMap[key] = append(state.aroundConfig.aroundMap[key], fn)
+// 	state.aroundConfig.aroundMu.Unlock()
+// }

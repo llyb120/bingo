@@ -16,6 +16,7 @@ type redisStarter struct {
 }
 
 type redisConfig struct {
+	Enable   bool   `json:"enable"`
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
 	Password string `json:"password"`
@@ -32,6 +33,9 @@ func (r *redisStarter) Init(state *core.State) {
 
 	dbs = y.Flex(y.Keys(cfgs), func(name string, _ int) *redis.Client {
 		v := cfgs[name]
+		if !v.Enable {
+			return nil
+		}
 		port := strconv.FormatInt(int64(v.Port), 10)
 		addr := v.Host + ":" + port
 		db := redis.NewClient(&redis.Options{
@@ -45,7 +49,7 @@ func (r *redisStarter) Init(state *core.State) {
 		}
 		core.ExportInstance(state, db, core.RegisterOption{Name: name})
 		return db
-	}, y.UseAsync, y.UsePanic)
+	}, y.UseAsync, y.UsePanic, y.NotNil)
 }
 
 func (r *redisStarter) Destroy(state *core.State) {

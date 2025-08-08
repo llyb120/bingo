@@ -1,22 +1,19 @@
 package core
 
-import "sync"
-
 type EventHandler func(args ...any)
 
-var eventMap = make(map[string][]EventHandler)
-var eventMapMutex sync.Mutex
-
-func On(eventName string, callback EventHandler) {
-	eventMapMutex.Lock()
-	defer eventMapMutex.Unlock()
-	eventMap[eventName] = append(eventMap[eventName], callback)
+func (s *State) On(eventName string, callback EventHandler) {
+	s.eventMapMutex.Lock()
+	defer s.eventMapMutex.Unlock()
+	s.eventMap[eventName] = append(s.eventMap[eventName], callback)
 }
 
-func Publish(eventName string, args ...any) {
-	eventMapMutex.Lock()
-	defer eventMapMutex.Unlock()
-	for _, callback := range eventMap[eventName] {
+func (s *State) Publish(eventName string, args ...any) {
+	// 读取时加读锁，复制切片后释放锁，降低锁粒度
+	s.eventMapMutex.RLock()
+	handlers := append([]EventHandler(nil), s.eventMap[eventName]...)
+	s.eventMapMutex.RUnlock()
+	for _, callback := range handlers {
 		callback(args...)
 	}
 }

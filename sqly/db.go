@@ -1,4 +1,4 @@
-package sql
+package sqly
 
 import (
 	"database/sql"

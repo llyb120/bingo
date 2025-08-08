@@ -7,20 +7,13 @@ import (
 )
 
 var (
-	ConfigStarter core.Starter = &configStarter{}
+	ConfigStarter core.Starter = func() func() {
+		cfg := LoadConfig()
+		core.ExportInstance(cfg, core.RegisterOption{Name: "config"})
+
+		return nil
+	}
 )
-
-type configStarter struct {
-}
-
-func (c *configStarter) Init(state *core.State) {
-	cfg := LoadConfig()
-	core.ExportInstance(state, cfg, core.RegisterOption{Name: "config"})
-}
-
-func (c *configStarter) Destroy(state *core.State) {
-
-}
 
 // LoadConfig 加载配置文件
 func LoadConfig() Config {

@@ -6,14 +6,10 @@ import (
 	"github.com/llyb120/bingo/core"
 )
 
-var CacheStarter core.Starter = &cacheStarter{}
+var CacheStarter core.Starter = func() func() {
 
-type cacheStarter struct {
-}
-
-func (c *cacheStarter) Init(state *core.State) {
 	// 使用事件订阅机制对命名导出函数进行劫持/增强
-	state.On("before:sql.Select", func(args ...any) {
+	core.On("before:sql.Select", func(args ...any) {
 		call := args[0].(*core.FuncCall)
 		// 示例：可根据 key 做缓存命中
 		fmt.Println("intercept sql.Select")
@@ -21,13 +17,11 @@ func (c *cacheStarter) Init(state *core.State) {
 		// 如果命中，可设置 call.Result 并 call.Skip = true 短路原调用
 		_ = call
 	})
-	state.On("after:sql.Select", func(args ...any) {
+	core.On("after:sql.Select", func(args ...any) {
 		call := args[0].(*core.FuncCall)
 		// 示例：将返回结果写入缓存
 		_ = call
 	})
-}
 
-func (c *cacheStarter) Destroy(state *core.State) {
-
+	return nil
 }

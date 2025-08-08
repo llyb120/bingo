@@ -7,8 +7,8 @@ import (
 // FuncCall 表示一次通过 ExportFuncNamed 导出的函数调用
 // 订阅者可在 before/after 事件中读取或修改调用
 type FuncCall struct {
+	state  *state
 	Name   string
-	State  *State
 	Args   []any
 	Result []any
 	// 若在 before 阶段设置为 true，将跳过原函数调用，直接使用 Result 作为返回
@@ -17,8 +17,7 @@ type FuncCall struct {
 
 // ExportFuncNamed 通过 name 导出函数，并在调用前后发布事件：before:<name> / after:<name>
 // 监听者可通过 *FuncCall 控制跳过原始调用或替换返回值，实现与调用方完全解耦
-func ExportFunc[T any](state *State, name string, target *T, source T) {
-	targetVal := reflect.ValueOf(target)
+func ExportFunc[T any](name string, source T) T {
 	sourceVal := reflect.ValueOf(source)
 
 	if sourceVal.Kind() != reflect.Func {
@@ -58,10 +57,10 @@ func ExportFunc[T any](state *State, name string, target *T, source T) {
 		for i := range in {
 			args[i] = in[i].Interface()
 		}
-		call := &FuncCall{Name: name, State: state, Args: args}
+		call := &FuncCall{Name: name, state: globalState, Args: args}
 
 		// before
-		state.Publish("before:"+name, call)
+		Publish("before:"+name, call)
 		if call.Skip {
 			return toTypedReturns(call.Result)
 		}
@@ -75,7 +74,7 @@ func ExportFunc[T any](state *State, name string, target *T, source T) {
 			resAny[i] = results[i].Interface()
 		}
 		call.Result = resAny
-		state.Publish("after:"+name, call)
+		Publish("after:"+name, call)
 
 		// 如 after 修改了 Result，则以修改后的为准
 		if call.Result != nil {
@@ -85,37 +84,34 @@ func ExportFunc[T any](state *State, name string, target *T, source T) {
 	}
 
 	fn := reflect.MakeFunc(fnType, proxyFunc).Interface()
-	targetElem := targetVal.Elem()
-	if !targetElem.CanSet() {
-		panic("target is not settable")
-	}
-	targetElem.Set(reflect.ValueOf(fn))
+	return fn.(T)
 }
 
 // ExportInstance 导出实例到状态管理器
-func ExportInstance(s *State, instance any, args ...RegisterOption) {
+func ExportInstance(ins any, args ...RegisterOption) {
+	s := globalState
 	s.mu.Lock()
 
 	var instanceName string
 	// 如果提供了名字
 	if len(args) > 0 && args[0].Name != "" {
 		instanceName = args[0].Name
-		s.instanceMap[instanceName] = &Instance{
-			Target: instance,
+		s.instanceMap[instanceName] = &instance{
+			Target: ins,
 			Name:   instanceName,
 		}
 	} else {
 		// 否则使用自身类型
-		typeOf := reflect.TypeOf(instance)
+		typeOf := reflect.TypeOf(ins)
 		instanceName = typeOf.String()
-		s.instanceMap[typeOf] = &Instance{
-			Target: instance,
+		s.instanceMap[typeOf] = &instance{
+			Target: ins,
 			Name:   instanceName,
 		}
 	}
 
 	// 唤醒等待此实例的goroutine
-	exportedType := reflect.TypeOf(instance)
+	exportedType := reflect.TypeOf(ins)
 	for goid, waitingKey := range s.waitingFor {
 		shouldWakeUp := false
 		switch key := waitingKey.(type) {

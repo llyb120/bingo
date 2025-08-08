@@ -21,17 +21,28 @@ var (
 	mysql1 *sql.DB
 )
 
-func main() {
+var plugins = []core.Starter{
+	config.ConfigStarter,
+	mysql.MysqlStarter,
+	ginx.GinStarter,
+	redis.RedisStarter,
+	cache.CacheStarter,
+}
+
+func init() {
 	os.Setenv("BINGO_CONFIG_PATH", "./config.properties")
-	state := core.Boot(config.ConfigStarter, mysql.MysqlStarter, ginx.GinStarter, redis.RedisStarter, cache.CacheStarter, sqly.Starter)
-	defer state.Shutdown()
-	state.Use(&mysql0, "m0")
-	state.Use(&mysql1)
+}
+
+func main() {
+	core.Boot(plugins...)
+	defer core.Shutdown()
+	core.Use(&mysql0, "m0")
+	core.Use(&mysql1)
 
 	var gin *gin.Engine
-	state.Use(&gin)
+	core.Use(&gin)
 
-	defer ginx.Start(state)
+	defer ginx.Start()
 
 	// 初始化路由
 	initRouter(gin)

@@ -7,13 +7,15 @@ import (
 	"github.com/petermattis/goid"
 )
 
-type Instance struct {
+var globalState = newState()
+
+type instance struct {
 	Target any
 	Name   string
 }
 
-type State struct {
-	instanceMap map[any]*Instance
+type state struct {
+	instanceMap map[any]*instance
 	mu          sync.Mutex
 	contextMap  map[string]interface{}
 
@@ -31,9 +33,9 @@ type State struct {
 	eventMapMutex sync.RWMutex
 }
 
-func newState() *State {
-	return &State{
-		instanceMap: make(map[any]*Instance),
+func newState() *state {
+	return &state{
+		instanceMap: make(map[any]*instance),
 		contextMap:  make(map[string]interface{}),
 		bootPhase:   true,
 		waitingFor:  make(map[int64]any),
@@ -43,13 +45,13 @@ func newState() *State {
 	}
 }
 
-func (s *State) SetState(key string, value any) {
+func (s *state) SetState(key string, value any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.contextMap[key] = value
 }
 
-func (s *State) GetState(key string) (any, bool) {
+func (s *state) GetState(key string) (any, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	value, ok := s.contextMap[key]
@@ -57,7 +59,7 @@ func (s *State) GetState(key string) (any, bool) {
 }
 
 // 开始boot阶段，记录总协程数
-func (s *State) startBoot(totalGoroutines int) {
+func (s *state) startBoot(totalGoroutines int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.bootPhase = true
@@ -65,14 +67,15 @@ func (s *State) startBoot(totalGoroutines int) {
 }
 
 // 结束boot阶段
-func (s *State) endBoot() {
+func (s *state) endBoot() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.bootPhase = false
 }
 
 // Wire 从状态管理器获取实例并赋值给target
-func (s *State) Use(target any, name ...string) {
+func Use(target any, name ...string) {
+	var s = globalState
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -117,7 +120,8 @@ func (s *State) Use(target any, name ...string) {
 }
 
 // Require 从状态管理器获取实例，带等待机制
-func (s *State) Require(target any, name ...string) any {
+func Require(target any, name ...string) any {
+	var s = globalState
 	if !s.bootPhase {
 		panic("require can only be called during boot/init phase")
 	}
@@ -133,11 +137,11 @@ func (s *State) Require(target any, name ...string) any {
 	}
 	elemType := targetVal.Elem().Type()
 
-	var instance *Instance
+	var ins *instance
 	if len(name) > 0 {
 		// 按名称获取
 		if inst, ok := s.instanceMap[name[0]]; ok {
-			instance = inst
+			ins = inst
 		}
 	} else {
 		// 按类型获取，与 Use 保持一致
@@ -149,17 +153,17 @@ func (s *State) Require(target any, name ...string) any {
 			if reflect.TypeOf(inst.Target) == elemType ||
 				(tVal.Kind() == reflect.Ptr && tVal.Elem().Type() == elemType) ||
 				(elemType.Kind() == reflect.Interface && tVal.Type().Implements(elemType)) {
-				instance = inst
+				ins = inst
 				break
 			}
 		}
 	}
 
 	// 如果已找到实例，则直接注入并返回
-	if instance != nil {
-		reflect.ValueOf(target).Elem().Set(reflect.ValueOf(instance.Target))
+	if ins != nil {
+		reflect.ValueOf(target).Elem().Set(reflect.ValueOf(ins.Target))
 		s.mu.Unlock()
-		return instance.Target
+		return ins.Target
 	}
 
 	// 依赖不存在，进入等待
@@ -201,7 +205,7 @@ func (s *State) Require(target any, name ...string) any {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// 再次尝试获取实例
-	var foundInstance *Instance
+	var foundInstance *instance
 	if len(name) > 0 {
 		if inst, ok := s.instanceMap[name[0]]; ok {
 			foundInstance = inst

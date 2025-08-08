@@ -13,34 +13,27 @@ import (
 // var globalGin *gin.Engine
 // var globalState *core.State
 
-var GinStarter core.Starter = &ginStarter{}
-
-type ginStarter struct {
-}
-
-func (g *ginStarter) Init(state *core.State) {
+var GinStarter core.Starter = func() func() {
 	// globalState = state
 	// globalGin = r
 	r := gin.New()
-	core.ExportInstance(state, r, core.RegisterOption{Name: "Gin"})
-}
+	core.ExportInstance(r, core.RegisterOption{Name: "Gin"})
 
-func (g *ginStarter) Destroy(state *core.State) {
-
+	return nil
 }
 
 type ginServer struct {
 	Port int `json:"port"`
 }
 
-func Start(state *core.State) {
+func Start() {
 	var gin *gin.Engine
 	var config config.Config
 	var server = ginServer{
 		Port: 8080,
 	}
-	state.Use(&gin)
-	state.Use(&config)
+	core.Use(&gin)
+	core.Use(&config)
 	config.LoadToStruct("server", &server)
 
 	s := &http.Server{

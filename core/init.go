@@ -1,48 +1,40 @@
 package core
 
 import (
-	"sync"
+	"github.com/llyb120/yoya2/y"
 )
 
-type Starter interface {
-	Init(state *State)
-	Destroy(state *State)
-}
+type Starter func() func()
 
-func Boot(Starters ...Starter) *State {
+func Boot(Starters ...Starter) {
 	state := newState()
 	state.SetState("@Starters", Starters)
 
 	// 启动boot阶段
 	state.startBoot(len(Starters))
 
-	var g sync.WaitGroup
-	for _, starter := range Starters {
-		g.Add(1)
-		go func() {
-			defer g.Done()
-			starter.Init(state)
-		}()
-	}
+	finalizers := y.Flex(Starters, func(starter Starter, _ int) any {
+		ender := starter()
+		return ender
+	}, y.UseAsync, y.UsePanic, y.NotNil)
 
-	g.Wait()
+	state.SetState("@finalizers", finalizers)
 
 	// 结束boot阶段
 	state.endBoot()
 
-	return state
 }
 
-func (s *State) Shutdown() {
-	_Starters, ok := s.GetState("@Starters")
+func Shutdown() {
+	_finalizers, ok := globalState.GetState("@finalizers")
 	if !ok {
 		return
 	}
-	Starters, ok := _Starters.([]Starter)
+	finalizers, ok := _finalizers.([]func())
 	if !ok {
 		return
 	}
-	for _, Starter := range Starters {
-		Starter.Destroy(s)
+	for _, ender := range finalizers {
+		ender()
 	}
 }

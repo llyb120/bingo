@@ -33,7 +33,7 @@ func Boot(Starters ...Starter) *State {
 	return state
 }
 
-func (s *State) Destroy() {
+func (s *State) Shutdown() {
 	_Starters, ok := s.GetState("@Starters")
 	if !ok {
 		return

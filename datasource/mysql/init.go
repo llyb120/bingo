@@ -3,11 +3,11 @@ package mysql
 import (
 	"database/sql"
 	"fmt"
-	"sync"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/llyb120/bingo/config"
 	"github.com/llyb120/bingo/core"
+	"github.com/llyb120/yoya2/y"
 )
 
 // func init() {
@@ -29,34 +29,34 @@ var MysqlStarter core.Starter = &mysqlStarter{}
 type mysqlStarter struct {
 }
 
+var dbs []*sql.DB
+
 func (m *mysqlStarter) Init(state *core.State) {
 	var cfg config.Config
 	state.Require(&cfg)
 	var cfgs map[string]MysqlConfig
 	cfg.LoadToStruct("datasource.mysql", &cfgs)
 
-	var g sync.WaitGroup
-	for name, cfg := range cfgs {
-		g.Add(1)
-		go func() {
-			defer g.Done()
-			// 连接
-			db, err := openMysqlConnection(cfg)
-			if err != nil {
-				panic(err)
-			}
-			if db == nil {
-				panic("failed to open mysql connection")
-			}
-			// 注册
-			state.ExportInstance(db, core.RegisterOption{Name: name})
-		}()
-	}
-	g.Wait()
+	// 初始化数据源
+	dbs = y.Flex(y.Keys(cfgs), func(name string, _ int) *sql.DB {
+		cfg := cfgs[name]
+		db, err := openMysqlConnection(cfg)
+		if err != nil {
+			panic(err)
+		}
+		if err := db.Ping(); err != nil {
+			panic(err)
+		}
+		core.ExportInstance(state, db, core.RegisterOption{Name: name})
+		return db
+	}, y.UseAsync, y.UsePanic)
 }
 
 func (m *mysqlStarter) Destroy(state *core.State) {
-
+	y.Flex(dbs, func(db *sql.DB, _ int) any {
+		db.Close()
+		return nil
+	}, y.UseAsync)
 }
 
 func openMysqlConnection(cfg MysqlConfig) (*sql.DB, error) {

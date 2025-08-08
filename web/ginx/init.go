@@ -22,7 +22,7 @@ func (g *ginStarter) Init(state *core.State) {
 	// globalState = state
 	// globalGin = r
 	r := gin.New()
-	state.ExportInstance(r, core.RegisterOption{Name: "Gin"})
+	core.ExportInstance(state, r, core.RegisterOption{Name: "Gin"})
 }
 
 func (g *ginStarter) Destroy(state *core.State) {

@@ -15,7 +15,7 @@ type configStarter struct {
 
 func (c *configStarter) Init(state *core.State) {
 	cfg := LoadConfig()
-	state.ExportInstance(cfg, core.RegisterOption{Name: "config"})
+	core.ExportInstance(state, cfg, core.RegisterOption{Name: "config"})
 }
 
 func (c *configStarter) Destroy(state *core.State) {

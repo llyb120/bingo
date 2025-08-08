@@ -65,57 +65,6 @@ func (s *State) endBoot() {
 	s.bootPhase = false
 }
 
-// ExportInstance 导出实例到状态管理器
-func (s *State) ExportInstance(instance any, args ...RegisterOption) {
-	s.mu.Lock()
-
-	var instanceName string
-	// 如果提供了名字
-	if len(args) > 0 && args[0].Name != "" {
-		instanceName = args[0].Name
-		s.instanceMap[instanceName] = &Instance{
-			Target: instance,
-			Name:   instanceName,
-		}
-	} else {
-		// 否则使用自身类型
-		typeOf := reflect.TypeOf(instance)
-		instanceName = typeOf.String()
-		s.instanceMap[typeOf] = &Instance{
-			Target: instance,
-			Name:   instanceName,
-		}
-	}
-
-	// 唤醒等待此实例的goroutine
-	exportedType := reflect.TypeOf(instance)
-	for goid, waitingKey := range s.waitingFor {
-		shouldWakeUp := false
-		switch key := waitingKey.(type) {
-		case string: // waiting for a name
-			if key == instanceName {
-				shouldWakeUp = true
-			}
-		case reflect.Type: // waiting for a type
-			if exportedType == key ||
-				(exportedType.Kind() == reflect.Ptr && exportedType.Elem() == key) ||
-				(key.Kind() == reflect.Interface && exportedType.Implements(key)) {
-				shouldWakeUp = true
-			}
-		}
-
-		if shouldWakeUp {
-			if ch, ok := s.waitChans[goid]; ok {
-				close(ch)
-				delete(s.waitingFor, goid)
-				delete(s.waitChans, goid)
-				s.waitingCount--
-			}
-		}
-	}
-	s.mu.Unlock()
-}
-
 // Wire 从状态管理器获取实例并赋值给target
 func (s *State) Use(target any, name ...string) {
 	s.mu.Lock()

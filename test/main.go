@@ -10,6 +10,7 @@ import (
 	"github.com/llyb120/bingo/config"
 	"github.com/llyb120/bingo/core"
 	"github.com/llyb120/bingo/datasource/mysql"
+	"github.com/llyb120/bingo/datasource/redis"
 	"github.com/llyb120/bingo/web/ginx"
 )
 
@@ -20,8 +21,8 @@ var (
 
 func main() {
 	os.Setenv("BINGO_CONFIG_PATH", "./config.properties")
-	state := core.Boot(config.ConfigStarter, mysql.MysqlStarter, ginx.GinStarter)
-	defer state.Destroy()
+	state := core.Boot(config.ConfigStarter, mysql.MysqlStarter, ginx.GinStarter, redis.RedisStarter)
+	defer state.Shutdown()
 	state.Use(&mysql0, "m0")
 	state.Use(&mysql1)
 

@@ -36,16 +36,16 @@ func init() {
 func main() {
 	core.Boot(plugins...)
 	defer core.Shutdown()
+
 	core.Use(&mysql0, "m0")
 	core.Use(&mysql1)
 
-	var gin *gin.Engine
+	var gin ginx.GinServer
 	core.Use(&gin)
-
-	defer ginx.Start()
+	defer gin.Start()
 
 	// 初始化路由
-	initRouter(gin)
+	initRouter(gin.Engine)
 
 	fmt.Println(mysql0)
 	fmt.Println(mysql1)

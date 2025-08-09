@@ -31,6 +31,9 @@ type state struct {
 	// 事件订阅
 	eventMap      map[string][]EventHandler
 	eventMapMutex sync.RWMutex
+
+	// 懒加载注入列表（记录 Use 未找到时的注入目标）
+	pendingInjections []*pendingInjection
 }
 
 func newState() *state {
@@ -43,6 +46,33 @@ func newState() *state {
 
 		eventMap: make(map[string][]EventHandler),
 	}
+}
+
+// 记录一次待注入
+type pendingInjection struct {
+	byName string             // 可选：按名称注入
+	trySet func(ins any) bool // 尝试将实例设置到目标，成功返回 true
+}
+
+// tryAssignFromAny 支持以下注入场景（尽量避免反射，仅在指针解引用时使用）：
+// 1) 直接断言到 T 成功（包含 T 为接口，且源实现该接口的情况）
+// 2) 源为指针，且指向的元素可断言为 T（用于导出为 *U，目标为 U 的场景）
+func tryAssignFromAny[T any](dst *T, src any) bool {
+	if v, ok := src.(T); ok {
+		*dst = v
+		return true
+	}
+	rv := reflect.ValueOf(src)
+	if rv.IsValid() && rv.Kind() == reflect.Ptr {
+		ev := rv.Elem()
+		if ev.IsValid() {
+			if v2, ok := ev.Interface().(T); ok {
+				*dst = v2
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (s *state) SetState(key string, value any) {
@@ -74,99 +104,79 @@ func (s *state) endBoot() {
 }
 
 // Wire 从状态管理器获取实例并赋值给target
-func Use(target any, name ...string) {
+func Use[T any](target *T, name ...string) {
 	var s = globalState
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	targetValue := reflect.ValueOf(target)
-	if targetValue.Kind() != reflect.Ptr {
-		panic("target must be a pointer")
-	}
-
-	elemType := targetValue.Elem().Type()
-
-	if len(name) == 0 {
-		// 取符合条件的第一个
-		for _, v := range s.instanceMap {
-			if v.Target == nil {
-				continue
-			}
-
-			targetVal := reflect.ValueOf(v.Target)
-			// 1. 检查是否是相同类型
-			// 2. 检查是否是指向相同类型的指针
-			// 3. 检查是否实现了接口（如果目标类型是接口）
-			if reflect.TypeOf(v.Target) == elemType ||
-				(targetVal.Kind() == reflect.Ptr &&
-					targetVal.Elem().Type() == elemType) ||
-				(elemType.Kind() == reflect.Interface &&
-					targetVal.Type().Implements(elemType)) {
-
-				reflect.ValueOf(target).Elem().Set(reflect.ValueOf(v.Target))
+	// 命名注入优先
+	if len(name) > 0 {
+		if mp := s.instanceMap[name[0]]; mp != nil {
+			if tryAssignFromAny(target, mp.Target) {
 				return
 			}
 		}
-		// 取第一个
-		panic("instance not found")
-	} else {
-		mp := s.instanceMap[name[0]]
-		if mp == nil {
-			panic("instance not found")
-		}
-		reflect.ValueOf(target).Elem().Set(reflect.ValueOf(mp.Target))
+		// 未找到或类型不匹配：记录按名称的懒注入
+		ptr := target
+		s.pendingInjections = append(s.pendingInjections, &pendingInjection{
+			byName: name[0],
+			trySet: func(ins any) bool {
+				return tryAssignFromAny(ptr, ins)
+			},
+		})
 		return
 	}
+
+	// 按类型/接口匹配：取符合条件的第一个
+	for _, v := range s.instanceMap {
+		if v == nil || v.Target == nil {
+			continue
+		}
+		if tryAssignFromAny(target, v.Target) {
+			return
+		}
+	}
+
+	// 未找到：记录懒注入（按类型）
+	ptr := target
+	s.pendingInjections = append(s.pendingInjections, &pendingInjection{
+		trySet: func(ins any) bool { return tryAssignFromAny(ptr, ins) },
+	})
 }
 
 // Require 从状态管理器获取实例，带等待机制
-func Require(target any, name ...string) any {
+func Require[T any](target *T, name ...string) any {
 	var s = globalState
 	if !s.bootPhase {
 		panic("require can only be called during boot/init phase")
 	}
 
-	// 检查依赖是否存在或注入目标
 	s.mu.Lock()
 
-	// 要求 target 必须是指针，用于注入
-	targetVal := reflect.ValueOf(target)
-	if targetVal.Kind() != reflect.Ptr {
-		s.mu.Unlock()
-		panic("target must be a pointer")
-	}
-	elemType := targetVal.Elem().Type()
-
-	var ins *instance
+	// 先尝试立即获取
 	if len(name) > 0 {
-		// 按名称获取
-		if inst, ok := s.instanceMap[name[0]]; ok {
-			ins = inst
+		if inst, ok := s.instanceMap[name[0]]; ok && inst != nil {
+			if tryAssignFromAny(target, inst.Target) {
+				// 返回原始实例，保持与旧逻辑一致
+				ret := inst.Target
+				s.mu.Unlock()
+				return ret
+			}
 		}
 	} else {
-		// 按类型获取，与 Use 保持一致
 		for _, inst := range s.instanceMap {
-			if inst.Target == nil {
+			if inst == nil || inst.Target == nil {
 				continue
 			}
-			tVal := reflect.ValueOf(inst.Target)
-			if reflect.TypeOf(inst.Target) == elemType ||
-				(tVal.Kind() == reflect.Ptr && tVal.Elem().Type() == elemType) ||
-				(elemType.Kind() == reflect.Interface && tVal.Type().Implements(elemType)) {
-				ins = inst
-				break
+			if tryAssignFromAny(target, inst.Target) {
+				ret := inst.Target
+				s.mu.Unlock()
+				return ret
 			}
 		}
 	}
 
-	// 如果已找到实例，则直接注入并返回
-	if ins != nil {
-		reflect.ValueOf(target).Elem().Set(reflect.ValueOf(ins.Target))
-		s.mu.Unlock()
-		return ins.Target
-	}
-
-	// 依赖不存在，进入等待
+	// 未获取到，进入等待
 	gid := goid.Get()
 
 	var waitingKey any
@@ -175,11 +185,13 @@ func Require(target any, name ...string) any {
 		waitingKey = name[0]
 		instanceIdentifier = name[0]
 	} else {
-		waitingKey = elemType
-		instanceIdentifier = elemType.String()
+		// 记录等待类型用于 ExportInstance 唤醒
+		var zero *T
+		t := reflect.TypeOf(zero).Elem()
+		waitingKey = t
+		instanceIdentifier = t.String()
 	}
 
-	// 检查是否已经处于等待状态（防止重入）
 	if _, ok := s.waitChans[gid]; ok {
 		s.mu.Unlock()
 		panic("goroutine is already waiting for a dependency")
@@ -190,7 +202,6 @@ func Require(target any, name ...string) any {
 	s.waitChans[gid] = waitChan
 	s.waitingCount++
 
-	// 检查死锁
 	if s.totalGoroutines > 0 && s.waitingCount >= s.totalGoroutines {
 		s.mu.Unlock()
 		panic("circular dependency detected: all goroutines are waiting")
@@ -198,39 +209,29 @@ func Require(target any, name ...string) any {
 
 	s.mu.Unlock()
 
-	// 等待被唤醒
+	// 等待唤醒
 	<-waitChan
 
-	// 被唤醒后，再次尝试获取
+	// 被唤醒后再次尝试
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// 再次尝试获取实例
-	var foundInstance *instance
 	if len(name) > 0 {
-		if inst, ok := s.instanceMap[name[0]]; ok {
-			foundInstance = inst
+		if inst, ok := s.instanceMap[name[0]]; ok && inst != nil {
+			if tryAssignFromAny(target, inst.Target) {
+				return inst.Target
+			}
 		}
 	} else {
 		for _, inst := range s.instanceMap {
-			if inst.Target == nil {
+			if inst == nil || inst.Target == nil {
 				continue
 			}
-			tVal := reflect.ValueOf(inst.Target)
-			if reflect.TypeOf(inst.Target) == elemType ||
-				(tVal.Kind() == reflect.Ptr && tVal.Elem().Type() == elemType) ||
-				(elemType.Kind() == reflect.Interface && tVal.Type().Implements(elemType)) {
-				foundInstance = inst
-				break
+			if tryAssignFromAny(target, inst.Target) {
+				return inst.Target
 			}
 		}
 	}
 
-	if foundInstance != nil {
-		reflect.ValueOf(target).Elem().Set(reflect.ValueOf(foundInstance.Target))
-		return foundInstance.Target
-	}
-
-	// 如果被唤醒后仍然找不到，说明有问题
 	panic("instance still not found after waiting: " + instanceIdentifier)
 }
 

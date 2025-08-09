@@ -110,8 +110,27 @@ func ExportInstance(ins any, args ...RegisterOption) {
 		}
 	}
 
-	// 唤醒等待此实例的goroutine
+	// 处理懒加载注入（Use 记录的待注入目标）
 	exportedType := reflect.TypeOf(ins)
+	if len(s.pendingInjections) > 0 {
+		kept := s.pendingInjections[:0]
+		for _, pend := range s.pendingInjections {
+			injected := false
+			if pend.byName != "" {
+				if pend.byName == instanceName {
+					injected = pend.trySet(ins)
+				}
+			} else {
+				injected = pend.trySet(ins)
+			}
+			if !injected {
+				kept = append(kept, pend)
+			}
+		}
+		s.pendingInjections = kept
+	}
+
+	// 唤醒等待此实例的goroutine（针对 Require）
 	for goid, waitingKey := range s.waitingFor {
 		shouldWakeUp := false
 		switch key := waitingKey.(type) {

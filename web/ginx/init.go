@@ -2,8 +2,6 @@ package ginx
 
 import (
 	"fmt"
-	"log"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/llyb120/bingo/config"
@@ -38,14 +36,5 @@ type ginServer struct {
 }
 
 func (g *GinServer) Start() {
-	s := &http.Server{
-		Addr:    fmt.Sprintf(":%d", g.config.Port),
-		Handler: g.Engine,
-	}
-	log.Printf("[info] start http server listening %d", g.config.Port)
-
-	err := s.ListenAndServe()
-	if err != nil {
-		panic(err)
-	}
+	g.Run(fmt.Sprintf(":%d", g.config.Port))
 }

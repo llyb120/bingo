@@ -17,6 +17,7 @@ var CacheStarter core.Starter = func() func() {
 		// 如果命中，可设置 call.Result 并 call.Skip = true 短路原调用
 		_ = call
 	})
+
 	core.On("after:sql.Select", func(args ...any) {
 		call := args[0].(*core.FuncCall)
 		// 示例：将返回结果写入缓存

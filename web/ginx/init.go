@@ -2,6 +2,9 @@ package ginx
 
 import (
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/gin-gonic/gin"
 	"github.com/llyb120/bingo/config"
@@ -36,5 +39,16 @@ type ginServer struct {
 }
 
 func (g *GinServer) Start() {
-	g.Run(fmt.Sprintf(":%d", g.config.Port))
+	go func() {
+		g.Run(fmt.Sprintf(":%d", g.config.Port))
+	}()
+
+	quit := make(chan os.Signal)
+	// sigint 是有 CTRL+C 触发，进程可以捕获信号，并进行处理，
+	// SIGTERM是有 kill 命令触发,进程可以捕获信号，并进行处理，
+	// SIGKILL是有 kill -9 命令触发，进程无法捕获。
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	// 处理后续逻辑
+	fmt.Println("开始关闭gin server...")
 }

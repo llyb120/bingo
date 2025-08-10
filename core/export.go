@@ -93,19 +93,28 @@ func ExportInstance(ins any, args ...RegisterOption) {
 	s.mu.Lock()
 
 	var instanceName string
+	// 统一将实例以“指针”形式存储，确保后续 Use/Require 可返回原始指针
+	stored := ins
+	rv := reflect.ValueOf(ins)
+	if rv.IsValid() && rv.Kind() != reflect.Ptr {
+		ptr := reflect.New(rv.Type())
+		ptr.Elem().Set(rv)
+		stored = ptr.Interface()
+	}
+
 	// 如果提供了名字
 	if len(args) > 0 && args[0].Name != "" {
 		instanceName = args[0].Name
 		s.instanceMap[instanceName] = &instance{
-			Target: ins,
+			Target: stored,
 			Name:   instanceName,
 		}
 	} else {
 		// 否则使用自身类型
-		typeOf := reflect.TypeOf(ins)
+		typeOf := reflect.TypeOf(stored)
 		instanceName = typeOf.String()
 		s.instanceMap[typeOf] = &instance{
-			Target: ins,
+			Target: stored,
 			Name:   instanceName,
 		}
 	}

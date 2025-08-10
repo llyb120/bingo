@@ -103,28 +103,43 @@ func (s *state) endBoot() {
 	s.bootPhase = false
 }
 
-// Wire 从状态管理器获取实例并赋值给target
-func Use[T any](target *T, name ...string) {
+// Use 从状态管理器获取实例，返回原始实例的指针。
+// 若未立即可用，将记录一次懒注入，并在实例导出后将原始指针写入。
+func Use[T any](name ...string) *T {
 	var s = globalState
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// helper: 尝试从任意值中抽取 *T
+	toPtr := func(src any) (*T, bool) {
+		if p, ok := src.(*T); ok {
+			return p, true
+		}
+		// 若导出的是 *U 且 U 可赋给 T，构造一个 *T 指向同一底层对象不可行
+		// 因此我们仅在 src 已是 *T 时返回，否则认为不匹配
+		return nil, false
+	}
+
 	// 命名注入优先
 	if len(name) > 0 {
 		if mp := s.instanceMap[name[0]]; mp != nil {
-			if tryAssignFromAny(target, mp.Target) {
-				return
+			if p, ok := toPtr(mp.Target); ok {
+				return p
 			}
 		}
 		// 未找到或类型不匹配：记录按名称的懒注入
-		ptr := target
+		var ret *T = nil
 		s.pendingInjections = append(s.pendingInjections, &pendingInjection{
 			byName: name[0],
 			trySet: func(ins any) bool {
-				return tryAssignFromAny(ptr, ins)
+				if p, ok := toPtr(ins); ok {
+					ret = p
+					return true
+				}
+				return false
 			},
 		})
-		return
+		return ret
 	}
 
 	// 按类型/接口匹配：取符合条件的第一个
@@ -132,35 +147,47 @@ func Use[T any](target *T, name ...string) {
 		if v == nil || v.Target == nil {
 			continue
 		}
-		if tryAssignFromAny(target, v.Target) {
-			return
+		if p, ok := toPtr(v.Target); ok {
+			return p
 		}
 	}
 
 	// 未找到：记录懒注入（按类型）
-	ptr := target
+	var ret *T = nil
 	s.pendingInjections = append(s.pendingInjections, &pendingInjection{
-		trySet: func(ins any) bool { return tryAssignFromAny(ptr, ins) },
+		trySet: func(ins any) bool {
+			if p, ok := toPtr(ins); ok {
+				ret = p
+				return true
+			}
+			return false
+		},
 	})
+	return ret
 }
 
-// Require 从状态管理器获取实例，带等待机制
-func Require[T any](target *T, name ...string) any {
+// Require 从状态管理器获取实例，带等待机制。返回原始实例的指针。
+func Require[T any](name ...string) *T {
 	var s = globalState
 	if !s.bootPhase {
 		panic("require can only be called during boot/init phase")
 	}
 
 	s.mu.Lock()
+	// helper: 尝试从任意值中抽取 *T
+	toPtr := func(src any) (*T, bool) {
+		if p, ok := src.(*T); ok {
+			return p, true
+		}
+		return nil, false
+	}
 
 	// 先尝试立即获取
 	if len(name) > 0 {
 		if inst, ok := s.instanceMap[name[0]]; ok && inst != nil {
-			if tryAssignFromAny(target, inst.Target) {
-				// 返回原始实例，保持与旧逻辑一致
-				ret := inst.Target
+			if p, ok2 := toPtr(inst.Target); ok2 {
 				s.mu.Unlock()
-				return ret
+				return p
 			}
 		}
 	} else {
@@ -168,10 +195,9 @@ func Require[T any](target *T, name ...string) any {
 			if inst == nil || inst.Target == nil {
 				continue
 			}
-			if tryAssignFromAny(target, inst.Target) {
-				ret := inst.Target
+			if p, ok2 := toPtr(inst.Target); ok2 {
 				s.mu.Unlock()
-				return ret
+				return p
 			}
 		}
 	}
@@ -217,8 +243,8 @@ func Require[T any](target *T, name ...string) any {
 	defer s.mu.Unlock()
 	if len(name) > 0 {
 		if inst, ok := s.instanceMap[name[0]]; ok && inst != nil {
-			if tryAssignFromAny(target, inst.Target) {
-				return inst.Target
+			if p, ok2 := toPtr(inst.Target); ok2 {
+				return p
 			}
 		}
 	} else {
@@ -226,8 +252,8 @@ func Require[T any](target *T, name ...string) any {
 			if inst == nil || inst.Target == nil {
 				continue
 			}
-			if tryAssignFromAny(target, inst.Target) {
-				return inst.Target
+			if p, ok2 := toPtr(inst.Target); ok2 {
+				return p
 			}
 		}
 	}

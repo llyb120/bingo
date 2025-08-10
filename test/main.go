@@ -2,8 +2,6 @@ package main
 
 import (
 	"database/sql"
-	"fmt"
-	"net/http"
 	"os"
 
 	"github.com/gin-gonic/gin"
@@ -17,8 +15,8 @@ import (
 )
 
 var (
-	mysql0 *sql.DB
-	mysql1 *sql.DB
+	mysql0 = core.Use[sql.DB]("m0")
+	mysql1 = core.Use[sql.DB]()
 )
 
 var plugins = []core.Starter{
@@ -37,23 +35,26 @@ func main() {
 	core.Boot(plugins...)
 	defer core.Shutdown()
 
-	core.Use(&mysql0, "m0")
-	core.Use(&mysql1)
+	// core.Use(&mysql0, "m0")
+	// core.Use(&mysql1)
 
-	var gin ginx.GinServer
-	core.Use(&gin)
+	var gin = core.Use[ginx.GinServer]()
 	defer gin.Start()
 
 	// 初始化路由
-	initRouter(gin.Engine)
-
-	fmt.Println(mysql0)
-	fmt.Println(mysql1)
+	initRouter(gin)
 }
 
-func initRouter(g *gin.Engine) {
-	g.GET("/", func(c *gin.Context) {
+func initRouter(g *ginx.GinServer) {
+
+	// 设定工作流
+	g.AddNode(ginx.ReadJsonBodyNode, ginx.ParseJsonBodyNode, ginx.EvaluteServiceNode, ginx.JsonResultNode)
+	// g.Use(parseBodyNode)
+
+	g.Engine.POST("/", ginx.Attach(func(ctx *gin.Context, req struct {
+		TopSize string `json:"top_size"`
+	}) (any, error) {
 		sqly.Select(mysql0, "select 1")
-		c.String(http.StatusOK, "Hello, World!")
-	})
+		return "ok" + req.TopSize, nil
+	}))
 }

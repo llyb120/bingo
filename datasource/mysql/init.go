@@ -25,8 +25,7 @@ type MysqlConfig struct {
 }
 
 var MysqlStarter core.Starter = func() func() {
-	var cfg config.Config
-	core.Require(&cfg)
+	var cfg = core.Require[config.Config]()
 	var cfgs map[string]MysqlConfig
 	cfg.LoadToStruct("datasource.mysql", &cfgs)
 

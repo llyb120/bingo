@@ -12,8 +12,7 @@ import (
 
 var RedisStarter core.Starter = func() func() {
 	// require
-	var cfg config.Config
-	core.Require(&cfg)
+	cfg := core.Require[config.Config]()
 	var cfgs map[string]redisConfig
 	cfg.LoadToStruct("datasource.redis", &cfgs)
 

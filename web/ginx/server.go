@@ -6,6 +6,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/llyb120/bingo/web"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -16,7 +18,7 @@ var (
 type GinServer struct {
 	Engine   *gin.Engine
 	config   ginServer
-	handlers []NodeHandler
+	handlers []web.NodeHandler
 }
 
 // 实现 web.Server
@@ -42,12 +44,27 @@ type GinServer struct {
 // 	})
 // }
 
-func (g *GinServer) AddNode(handlers ...NodeHandler) {
+func (g *GinServer) AddNode(handlers ...web.NodeHandler) {
 	g.handlers = append(g.handlers, handlers...)
 }
 
-func (g *GinServer) Start() {
+func (g *GinServer) Use(middleware ...gin.HandlerFunc) {
+	g.Engine.Use(middleware...)
+}
 
+func (g *GinServer) GET(path string, handler web.RequestHandler) {
+	g.Engine.GET(path, func(context *gin.Context) {
+		handler(context)
+	})
+}
+
+func (g *GinServer) POST(path string, handler web.RequestHandler) {
+	g.Engine.POST(path, func(context *gin.Context) {
+		handler(context)
+	})
+}
+
+func (g *GinServer) Start() {
 	go func() {
 		g.Engine.Run(fmt.Sprintf(":%d", g.config.Port))
 	}()

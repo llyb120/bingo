@@ -21,7 +21,8 @@ var GinStarter core.Starter = func() func() {
 
 	gins := &GinServer{Engine: r, config: server}
 	r.Use(func(c *gin.Context) {
-		c.Set("$bingo-ginx-handlers", gins.handlers)
+		c.Set("$bingo-handlers", gins.handlers)
+		c.Next()
 	})
 
 	core.ExportInstance(gins, core.RegisterOption{Name: "Gin"})

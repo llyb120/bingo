@@ -18,9 +18,6 @@ var RedisStarter core.Starter = func() func() {
 
 	dbs := y.Flex(y.Keys(cfgs), func(name string, _ int) *redis.Client {
 		v := cfgs[name]
-		if !v.Enable {
-			return nil
-		}
 		port := strconv.FormatInt(int64(v.Port), 10)
 		addr := v.Host + ":" + port
 		db := redis.NewClient(&redis.Options{

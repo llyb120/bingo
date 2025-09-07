@@ -112,6 +112,8 @@ func Use[T any](name ...string) *T {
 
 	// helper: 尝试从任意值中抽取 *T
 	toPtr := func(src any) (*T, bool) {
+		zero := new(T)
+		_ = zero
 		if p, ok := src.(*T); ok {
 			return p, true
 		}
@@ -128,12 +130,18 @@ func Use[T any](name ...string) *T {
 			}
 		}
 		// 未找到或类型不匹配：记录按名称的懒注入
-		var ret *T = nil
+		var ret *T = new(T)
 		s.pendingInjections = append(s.pendingInjections, &pendingInjection{
 			byName: name[0],
 			trySet: func(ins any) bool {
+				// 如果不需要转换指针可以直接使用
+				if p, ok := ins.(T); ok {
+					reflect.ValueOf(ret).Elem().Set(reflect.ValueOf(p))
+					return true
+				}
 				if p, ok := toPtr(ins); ok {
-					ret = p
+					reflect.ValueOf(ret).Elem().Set(reflect.ValueOf(p).Elem())
+					//ret = p
 					return true
 				}
 				return false
@@ -153,11 +161,12 @@ func Use[T any](name ...string) *T {
 	}
 
 	// 未找到：记录懒注入（按类型）
-	var ret *T = nil
+	var ret *T = new(T)
 	s.pendingInjections = append(s.pendingInjections, &pendingInjection{
 		trySet: func(ins any) bool {
 			if p, ok := toPtr(ins); ok {
-				ret = p
+				reflect.ValueOf(ret).Elem().Set(reflect.ValueOf(p).Elem())
+				//ret = p
 				return true
 			}
 			return false

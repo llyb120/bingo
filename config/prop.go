@@ -9,10 +9,14 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // Config 配置结构体
 type Config map[string]interface{}
+
+var valueCache = make(map[string]any)
+var valueCacheLock sync.RWMutex
 
 var (
 	arrayKeyRegexp = regexp.MustCompile(`^(\w+)\[(\d+)\]$`)
@@ -54,7 +58,8 @@ func loadProperties(path string) (Config, error) {
 	file, err := os.Open(abspath)
 	if err != nil {
 		// 文件不存在时返回空配置，不报错
-		return cfg, nil
+		panic("配置文件不存在，请检查配置文件路径是否正确")
+		//return cfg, nil
 	}
 	defer file.Close()
 
@@ -647,10 +652,19 @@ func setStructFields(cfg Config, v reflect.Value) error {
 
 // GetString 获取字符串配置值
 func (c Config) GetString(key string) string {
+	valueCacheLock.RLock()
+	if val, ok := valueCache[key]; ok {
+		valueCacheLock.RUnlock()
+		return fmt.Sprint(val)
+	}
+	valueCacheLock.RUnlock()
 	val := c.getValue(key)
 	if val == nil {
 		return ""
 	}
+	valueCacheLock.Lock()
+	valueCache[key] = val
+	valueCacheLock.Unlock()
 	return fmt.Sprint(val)
 }
 

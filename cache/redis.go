@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 	jsoniter "github.com/json-iterator/go"
 )
@@ -12,7 +11,10 @@ import (
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // Set a key/value
-func Set[T any](conn *redis.Client, key string, data T, t time.Duration, ext string) error {
+func Set[T any](conn *redis.Client, key string, data T, t time.Duration) error {
+	if t == 0 {
+		t = 10 * time.Minute
+	}
 	var (
 		reply string
 		err   error
@@ -23,17 +25,19 @@ func Set[T any](conn *redis.Client, key string, data T, t time.Duration, ext str
 	// 	skyWalking.EndSpanForRedisCache(c, span, "SET", reply, time.Now().Sub(now), ext, err)
 	// }()
 
+	var value []byte
 	switch data := any(data).(type) {
 	case []byte:
+		value = data
 	default:
-		value, err := json.Marshal(data)
+		var err error
+		value, err = json.Marshal(data)
 		if err != nil {
 			return err
 		}
-		data = value
 	}
 	ctx := context.Background()
-	reply, err = conn.Set(ctx, key, data, t).Result()
+	reply, err = conn.Set(ctx, key, string(value), t).Result()
 	if err != nil {
 		return err
 	}
@@ -72,7 +76,7 @@ func Set[T any](conn *redis.Client, key string, data T, t time.Duration, ext str
 // }
 
 // Get get a key
-func Get(c *gin.Context, conn *redis.Client, key string, ext string) ([]byte, error) {
+func Get(conn *redis.Client, key string) ([]byte, error) {
 	var (
 		reply     string
 		gerr, err error

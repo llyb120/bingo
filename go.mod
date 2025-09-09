@@ -38,7 +38,7 @@ require (
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/llyb120/gotemplate v0.0.124
-	github.com/llyb120/gox v0.0.2
+	github.com/llyb120/gox v0.0.3
 )
 
 require github.com/llyb120/goscript v0.0.113 // indirect

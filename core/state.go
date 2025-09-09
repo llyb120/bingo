@@ -3,6 +3,7 @@ package core
 import (
 	"reflect"
 	"sync"
+	"unsafe"
 
 	"github.com/petermattis/goid"
 )
@@ -112,8 +113,6 @@ func Use[T any](name ...string) *T {
 
 	// helper: 尝试从任意值中抽取 *T
 	toPtr := func(src any) (*T, bool) {
-		zero := new(T)
-		_ = zero
 		if p, ok := src.(*T); ok {
 			return p, true
 		}
@@ -134,14 +133,17 @@ func Use[T any](name ...string) *T {
 		s.pendingInjections = append(s.pendingInjections, &pendingInjection{
 			byName: name[0],
 			trySet: func(ins any) bool {
-				// 如果不需要转换指针可以直接使用
-				if p, ok := ins.(T); ok {
-					reflect.ValueOf(ret).Elem().Set(reflect.ValueOf(p))
+				// 优先尝试指针重定向
+				if p, ok := toPtr(ins); ok {
+					// 使用 unsafe 指针重定向，让 ret 指向真实实例
+					*(*unsafe.Pointer)(unsafe.Pointer(&ret)) = unsafe.Pointer(p)
 					return true
 				}
-				if p, ok := toPtr(ins); ok {
-					reflect.ValueOf(ret).Elem().Set(reflect.ValueOf(p).Elem())
-					//ret = p
+				// 如果不需要转换指针可以直接使用
+				if p, ok := ins.(T); ok {
+					// 创建指向该值的指针，然后重定向
+					valuePtr := &p
+					*(*unsafe.Pointer)(unsafe.Pointer(&ret)) = unsafe.Pointer(valuePtr)
 					return true
 				}
 				return false
@@ -164,9 +166,17 @@ func Use[T any](name ...string) *T {
 	var ret *T = new(T)
 	s.pendingInjections = append(s.pendingInjections, &pendingInjection{
 		trySet: func(ins any) bool {
+			// 优先尝试指针重定向
 			if p, ok := toPtr(ins); ok {
-				reflect.ValueOf(ret).Elem().Set(reflect.ValueOf(p).Elem())
-				//ret = p
+				// 使用 unsafe 指针重定向，让 ret 指向真实实例
+				*(*unsafe.Pointer)(unsafe.Pointer(&ret)) = unsafe.Pointer(p)
+				return true
+			}
+			// 如果不需要转换指针可以直接使用
+			if p, ok := ins.(T); ok {
+				// 创建指向该值的指针，然后重定向
+				valuePtr := &p
+				*(*unsafe.Pointer)(unsafe.Pointer(&ret)) = unsafe.Pointer(valuePtr)
 				return true
 			}
 			return false

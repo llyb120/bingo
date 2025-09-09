@@ -9,6 +9,7 @@ type DBLike interface {
 	Prepare(query string) (*sql.Stmt, error)
 	Driver() driver.Driver
 	Exec(query string, args ...interface{}) (sql.Result, error)
+	Query(query string, args ...interface{}) (*sql.Rows, error)
 }
 
 type Tx struct {
@@ -33,7 +34,17 @@ func (t *Tx) Rollback() error {
 }
 
 func (t *Tx) Exec(query string, args ...interface{}) (sql.Result, error) {
+	if t.Tx == nil {
+		return t.Db.Exec(query, args...)
+	}
 	return t.Tx.Exec(query, args...)
+}
+
+func (t *Tx) Query(query string, args ...interface{}) (*sql.Rows, error) {
+	if t.Tx == nil {
+		return t.Db.Query(query, args...)
+	}
+	return t.Tx.Query(query, args...)
 }
 
 func NewTx(db *sql.DB) (*Tx, error) {

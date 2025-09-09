@@ -37,7 +37,11 @@ require (
 	github.com/gin-gonic/gin v1.10.1
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-sql-driver/mysql v1.9.3
+	github.com/llyb120/gotemplate v0.0.124
+	github.com/llyb120/gox v0.0.2
 )
+
+require github.com/llyb120/goscript v0.0.113 // indirect
 
 require (
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
@@ -47,3 +51,5 @@ require (
 )
 
 replace github.com/llyb120/yoya2 => D:/project/yoya222
+
+replace github.com/llyb120/gox => D:/project/gox

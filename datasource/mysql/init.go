@@ -20,6 +20,7 @@ import (
 type MysqlConfig struct {
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
+	Database string `json:"database"`
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
@@ -52,8 +53,8 @@ var MysqlStarter core.Starter = func() func() {
 }
 
 func openMysqlConnection(cfg MysqlConfig) (*sql.DB, error) {
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/?charset=utf8&parseTime=True&loc=Local",
-		cfg.Username, cfg.Password, cfg.Host, cfg.Port)
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8&parseTime=True&loc=Local",
+		cfg.Username, cfg.Password, cfg.Host, cfg.Port, cfg.Database)
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return nil, err

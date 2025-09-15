@@ -28,7 +28,7 @@ var GoTemplateStarter core.Starter = func() func() {
 		if filesName == "" {
 			panic("sql.template.files is empty")
 		}
-		embeddedFiles := core.Require[embed.FS](filesName)
+		embeddedFiles := core.Require[*embed.FS](filesName)
 		if err := startProd(render, embeddedFiles); err != nil {
 			panic(err)
 		}

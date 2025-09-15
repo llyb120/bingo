@@ -152,28 +152,40 @@ func Use[T any](name ...string) Useable[T] {
 	}
 }
 
-// Require 从状态管理器获取实例，带等待机制。返回原始实例的指针。
-func Require[T any](name ...string) *T {
+// Require 从状态管理器获取实例，带等待机制。返回值类型与泛型参数一致。
+func Require[T any](name ...string) T {
 	var s = globalState
 	if !s.bootPhase {
 		panic("require can only be called during boot/init phase")
 	}
 
 	s.mu.Lock()
-	// helper: 尝试从任意值中抽取 *T
-	toPtr := func(src any) (*T, bool) {
-		if p, ok := src.(*T); ok {
-			return p, true
+	// helper: 尝试从任意值中抽取 T
+	getValue := func(src any) (T, bool) {
+		// 直接类型断言
+		if v, ok := src.(T); ok {
+			return v, true
 		}
-		return nil, false
+		// 如果 src 是指针，尝试解引用
+		rv := reflect.ValueOf(src)
+		if rv.IsValid() && rv.Kind() == reflect.Ptr {
+			ev := rv.Elem()
+			if ev.IsValid() {
+				if v, ok := ev.Interface().(T); ok {
+					return v, true
+				}
+			}
+		}
+		var zero T
+		return zero, false
 	}
 
 	// 先尝试立即获取
 	if len(name) > 0 {
 		if inst, ok := s.instanceMap[name[0]]; ok && inst != nil {
-			if p, ok2 := toPtr(inst.Target); ok2 {
+			if v, ok2 := getValue(inst.Target); ok2 {
 				s.mu.Unlock()
-				return p
+				return v
 			}
 		}
 	} else {
@@ -181,9 +193,9 @@ func Require[T any](name ...string) *T {
 			if inst == nil || inst.Target == nil {
 				continue
 			}
-			if p, ok2 := toPtr(inst.Target); ok2 {
+			if v, ok2 := getValue(inst.Target); ok2 {
 				s.mu.Unlock()
-				return p
+				return v
 			}
 		}
 	}
@@ -198,8 +210,8 @@ func Require[T any](name ...string) *T {
 		instanceIdentifier = name[0]
 	} else {
 		// 记录等待类型用于 ExportInstance 唤醒
-		var zero *T
-		t := reflect.TypeOf(zero).Elem()
+		var zero T
+		t := reflect.TypeOf(zero)
 		waitingKey = t
 		instanceIdentifier = t.String()
 	}
@@ -229,8 +241,8 @@ func Require[T any](name ...string) *T {
 	defer s.mu.Unlock()
 	if len(name) > 0 {
 		if inst, ok := s.instanceMap[name[0]]; ok && inst != nil {
-			if p, ok2 := toPtr(inst.Target); ok2 {
-				return p
+			if v, ok2 := getValue(inst.Target); ok2 {
+				return v
 			}
 		}
 	} else {
@@ -238,8 +250,8 @@ func Require[T any](name ...string) *T {
 			if inst == nil || inst.Target == nil {
 				continue
 			}
-			if p, ok2 := toPtr(inst.Target); ok2 {
-				return p
+			if v, ok2 := getValue(inst.Target); ok2 {
+				return v
 			}
 		}
 	}

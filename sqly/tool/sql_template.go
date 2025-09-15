@@ -37,6 +37,8 @@ var GoTemplateStarter core.Starter = func() func() {
 	return nil
 }
 
+var render = core.Use[*gotemplate.SqlRender]()
+
 func GetSql(path string, data ...any) (sql string, params []any, err error) {
 	var main string
 	var sub string
@@ -50,7 +52,7 @@ func GetSql(path string, data ...any) (sql string, params []any, err error) {
 	if len(data) > 0 {
 		d = data[0]
 	}
-	return core.Use[gotemplate.SqlRender]().GetSql(main, sub, d)
+	return render().GetSql(main, sub, d)
 }
 
 func startDev(render *gotemplate.SqlRender, dir string) error {

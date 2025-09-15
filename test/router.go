@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+
 	"github.com/llyb120/bingo/sqly/tool"
 
 	"github.com/llyb120/bingo/core"
@@ -12,9 +13,12 @@ import (
 	"github.com/llyb120/bingo/web/ginx"
 )
 
-var RouterStarter core.Starter = func() func() {
-	var r = core.Require[ginx.GinServer]()
+var gin = core.Use[*ginx.GinServer]()
+var db = core.Use[*sql.DB]()
+
+func InitRouter() {
 	// 设定工作流
+	var r = gin()
 	r.AddNode(ginx.ParseJsonBodyNode, ginx.ValidateNode, ginx.EvaluteServiceNode, ginx.JsonResultNode, ginx.ErrorResultNode)
 	// g.Use(parseBodyNode)
 
@@ -51,20 +55,19 @@ var RouterStarter core.Starter = func() func() {
 		//res, _ := cacheable(c, "ok")
 
 		// 示例：查询返回原始数据（保持字段名）
-		var db = core.Use[sql.DB]()
 		// test sql template
 		var sql, params, err = tool.GetSql("test.a")
 		if err != nil {
 			return nil, err
 		}
-		rawData, err := sqly.Select[[]map[string]any](c, db, sql, params...)
+		rawData, err := sqly.Select[[]map[string]any](c, db(), sql, params...)
 		if err != nil {
 			return nil, err
 		}
 		log.Info(c, "sql is %s", sql)
 		log.Info(c, "raw data: %v", rawData)
 
-		rawData, err = sqly.Select[[]map[string]any](c, db, "select * from current_trade")
+		rawData, err = sqly.Select[[]map[string]any](c, db(), "select * from current_trade")
 		if err != nil {
 			return nil, err
 		}
@@ -78,7 +81,7 @@ var RouterStarter core.Starter = func() func() {
 		// trades, err := sqly.Select[[]Trade](c, db, "select id, symbol, price from current_trade")
 
 		// 示例：执行插入操作
-		rowsAffected, lastInsertId, err := sqly.Exec(c, db, "INSERT INTO test_log (message, created_at) VALUES (?, NOW())", "API调用测试")
+		rowsAffected, lastInsertId, err := sqly.Exec(c, db(), "INSERT INTO test_log (message, created_at) VALUES (?, NOW())", "API调用测试")
 		if err != nil {
 			log.Error(c, "插入日志失败: %v", err)
 		}
@@ -91,5 +94,4 @@ var RouterStarter core.Starter = func() func() {
 		}, nil
 	}))
 
-	return nil
 }

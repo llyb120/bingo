@@ -24,7 +24,6 @@ var plugins = []core.Starter{
 	mysql.MysqlStarter,
 	ginx.GinStarter,
 	redis.RedisStarter,
-	RouterStarter,
 	template.TestTemplateStarter,
 	tool.GoTemplateStarter,
 	//cache.CacheStarter,
@@ -43,6 +42,8 @@ func main() {
 
 	var gin = core.Require[ginx.GinServer]()
 	defer gin.Start()
+
+	InitRouter()
 }
 
 type TestValidate struct {

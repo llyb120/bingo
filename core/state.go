@@ -3,7 +3,6 @@ package core
 import (
 	"reflect"
 	"sync"
-	"unsafe"
 
 	"github.com/petermattis/goid"
 )
@@ -32,9 +31,6 @@ type state struct {
 	// 事件订阅
 	eventMap      map[string][]EventHandler
 	eventMapMutex sync.RWMutex
-
-	// 懒加载注入列表（记录 Use 未找到时的注入目标）
-	pendingInjections []*pendingInjection
 }
 
 func newState() *state {
@@ -49,11 +45,7 @@ func newState() *state {
 	}
 }
 
-// 记录一次待注入
-type pendingInjection struct {
-	byName string             // 可选：按名称注入
-	trySet func(ins any) bool // 尝试将实例设置到目标，成功返回 true
-}
+type Useable[T any] func() T
 
 // tryAssignFromAny 支持以下注入场景（尽量避免反射，仅在指针解引用时使用）：
 // 1) 直接断言到 T 成功（包含 T 为接口，且源实现该接口的情况）
@@ -104,85 +96,60 @@ func (s *state) endBoot() {
 	s.bootPhase = false
 }
 
-// Use 从状态管理器获取实例，返回原始实例的指针。
-// 若未立即可用，将记录一次懒注入，并在实例导出后将原始指针写入。
-func Use[T any](name ...string) *T {
-	var s = globalState
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// Use 返回一个函数，该函数被调用时会从状态管理器获取实例。
+// 这样避免了在 Use 调用时就需要处理注入时机的问题。
+func Use[T any](name ...string) Useable[T] {
+	return func() T {
+		var s = globalState
+		s.mu.Lock()
+		defer s.mu.Unlock()
 
-	// helper: 尝试从任意值中抽取 *T
-	toPtr := func(src any) (*T, bool) {
-		if p, ok := src.(*T); ok {
-			return p, true
-		}
-		// 若导出的是 *U 且 U 可赋给 T，构造一个 *T 指向同一底层对象不可行
-		// 因此我们仅在 src 已是 *T 时返回，否则认为不匹配
-		return nil, false
-	}
-
-	// 命名注入优先
-	if len(name) > 0 {
-		if mp := s.instanceMap[name[0]]; mp != nil {
-			if p, ok := toPtr(mp.Target); ok {
-				return p
+		// helper: 尝试从任意值中抽取 T
+		getValue := func(src any) (T, bool) {
+			// 直接类型断言
+			if v, ok := src.(T); ok {
+				return v, true
 			}
-		}
-		// 未找到或类型不匹配：记录按名称的懒注入
-		var ret *T = new(T)
-		s.pendingInjections = append(s.pendingInjections, &pendingInjection{
-			byName: name[0],
-			trySet: func(ins any) bool {
-				// 优先尝试指针重定向
-				if p, ok := toPtr(ins); ok {
-					// 使用 unsafe 指针重定向，让 ret 指向真实实例
-					*(*unsafe.Pointer)(unsafe.Pointer(&ret)) = unsafe.Pointer(p)
-					return true
+			// 如果 src 是指针，尝试解引用
+			rv := reflect.ValueOf(src)
+			if rv.IsValid() && rv.Kind() == reflect.Ptr {
+				ev := rv.Elem()
+				if ev.IsValid() {
+					if v, ok := ev.Interface().(T); ok {
+						return v, true
+					}
 				}
-				// 如果不需要转换指针可以直接使用
-				if p, ok := ins.(T); ok {
-					// 创建指向该值的指针，然后重定向
-					valuePtr := &p
-					*(*unsafe.Pointer)(unsafe.Pointer(&ret)) = unsafe.Pointer(valuePtr)
-					return true
+			}
+			var zero T
+			return zero, false
+		}
+
+		// 命名注入优先
+		if len(name) > 0 {
+			if mp := s.instanceMap[name[0]]; mp != nil {
+				if v, ok := getValue(mp.Target); ok {
+					return v
 				}
-				return false
-			},
-		})
-		return ret
-	}
-
-	// 按类型/接口匹配：取符合条件的第一个
-	for _, v := range s.instanceMap {
-		if v == nil || v.Target == nil {
-			continue
-		}
-		if p, ok := toPtr(v.Target); ok {
-			return p
-		}
-	}
-
-	// 未找到：记录懒注入（按类型）
-	var ret *T = new(T)
-	s.pendingInjections = append(s.pendingInjections, &pendingInjection{
-		trySet: func(ins any) bool {
-			// 优先尝试指针重定向
-			if p, ok := toPtr(ins); ok {
-				// 使用 unsafe 指针重定向，让 ret 指向真实实例
-				*(*unsafe.Pointer)(unsafe.Pointer(&ret)) = unsafe.Pointer(p)
-				return true
 			}
-			// 如果不需要转换指针可以直接使用
-			if p, ok := ins.(T); ok {
-				// 创建指向该值的指针，然后重定向
-				valuePtr := &p
-				*(*unsafe.Pointer)(unsafe.Pointer(&ret)) = unsafe.Pointer(valuePtr)
-				return true
+			// 未找到时返回零值
+			var zero T
+			return zero
+		}
+
+		// 按类型/接口匹配：取符合条件的第一个
+		for _, v := range s.instanceMap {
+			if v == nil || v.Target == nil {
+				continue
 			}
-			return false
-		},
-	})
-	return ret
+			if val, ok := getValue(v.Target); ok {
+				return val
+			}
+		}
+
+		// 未找到时返回零值
+		var zero T
+		return zero
+	}
 }
 
 // Require 从状态管理器获取实例，带等待机制。返回原始实例的指针。

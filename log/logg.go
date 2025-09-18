@@ -10,13 +10,13 @@ import (
 // ANSI 颜色代码定义
 const (
 	ColorReset  = "\033[0m"
-	ColorRed    = "\033[31m"
-	ColorGreen  = "\033[32m"
-	ColorYellow = "\033[33m"
-	ColorBlue   = "\033[34m"
-	ColorPurple = "\033[35m"
-	ColorCyan   = "\033[36m"
-	ColorWhite  = "\033[37m"
+	ColorRed    = "\033[38;5;203m" // 柔和的红色
+	ColorGreen  = "\033[38;5;77m"  // 柔和的绿色
+	ColorYellow = "\033[38;5;185m" // 柔和的黄色
+	ColorBlue   = "\033[38;5;75m"  // 柔和的蓝色
+	ColorPurple = "\033[38;5;141m" // 柔和的紫色
+	ColorCyan   = "\033[38;5;86m"  // 柔和的青色
+	ColorWhite  = "\033[38;5;255m" // 柔和的白色
 	Bold        = "\033[1m"
 )
 
@@ -29,7 +29,7 @@ func colorPrint(level, color, msg string) {
 
 func Info(context core.Context, msg string, args ...interface{}) {
 	msg = fmt.Sprintf(msg, args...)
-	colorPrint("INFO", ColorGreen, msg)
+	colorPrint("INFO", ColorPurple, msg)
 	//zapPrint(INFO, msg)
 }
 

@@ -20,7 +20,7 @@ import (
 func Select[T any](ctx core.Context, db DBLike, sql string, args ...any) (T, error) {
 	var zero T
 
-	log.Info(ctx, "执行SQL查询: %s", sql)
+	log.Info(ctx, "执行SQL查询: %s", PrintSql(ctx, sql, args...))
 
 	if db == nil {
 		return zero, fmt.Errorf("数据库连接不能为空")

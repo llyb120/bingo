@@ -2,7 +2,6 @@ package log
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/llyb120/bingo/core"
@@ -25,7 +24,7 @@ const (
 func colorPrint(level, color, msg string) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	coloredMsg := fmt.Sprintf("%s%s[%s] [%s] %s%s", Bold, color, timestamp, level, msg, ColorReset)
-	log.Println(coloredMsg)
+	fmt.Println(coloredMsg)
 }
 
 func Info(context core.Context, msg string, args ...interface{}) {

@@ -44,6 +44,9 @@ func Attach[T any, R any](fn attachHandler[T, R]) func(c core.Context) {
 		var finalErr error
 		for _, handler := range handlers {
 			if handler == nil {
+				if finalErr != nil {
+					continue
+				}
 				_arg, _ := c.Get("$bingo-body-parsed")
 				arg, ok := _arg.(T)
 				if !ok {

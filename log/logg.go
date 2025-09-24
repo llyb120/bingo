@@ -20,6 +20,9 @@ const (
 	Bold        = "\033[1m"
 )
 
+var systemLogger = &defaultLogger{}
+var loggerFactory = core.Use[Logger]()
+
 // colorPrint 打印带颜色的日志
 func colorPrint(level, color, msg string) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
@@ -28,25 +31,39 @@ func colorPrint(level, color, msg string) {
 }
 
 func Info(context core.Context, msg string, args ...interface{}) {
-	msg = fmt.Sprintf(msg, args...)
-	colorPrint("INFO", ColorPurple, msg)
 	//zapPrint(INFO, msg)
+	logger := getLogger()
+	if logger != nil {
+		logger.Info(context, msg, args...)
+	}
 }
 
 func Error(context core.Context, msg string, args ...interface{}) {
-	msg = fmt.Sprintf(msg, args...)
-	colorPrint("ERROR", ColorRed, msg)
 	//zapPrint(ERROR, msg)
+	logger := getLogger()
+	if logger != nil {
+		logger.Error(context, msg, args...)
+	}
 }
 
 func Debug(context core.Context, msg string, args ...interface{}) {
-	msg = fmt.Sprintf(msg, args...)
-	colorPrint("DEBUG", ColorBlue, msg)
-	//zapPrint(DEBUG, msg)
+	logger := getLogger()
+	if logger != nil {
+		logger.Debug(context, msg, args...)
+	}
 }
 
 func Warn(context core.Context, msg string, args ...interface{}) {
-	msg = fmt.Sprintf(msg, args...)
-	colorPrint("WARN", ColorYellow, msg)
-	//zapPrint(WARN, msg)
+	logger := getLogger()
+	if logger != nil {
+		logger.Warn(context, msg, args...)
+	}
+}
+
+func getLogger() Logger {
+	logger := loggerFactory()
+	if logger != nil {
+		return logger
+	}
+	return systemLogger
 }

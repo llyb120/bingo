@@ -2,6 +2,7 @@ package web
 
 import (
 	"github.com/llyb120/bingo/core"
+	"reflect"
 )
 
 type attachHandler[T any, R any] func(ctx core.Context, req T) (R, error)
@@ -26,7 +27,9 @@ func Attach[T any, R any](fn attachHandler[T, R]) func(c core.Context) {
 	//	InType:  reflect.TypeOf((*T)(nil)).Elem(),
 	//	OutType: reflect.TypeOf((*R)(nil)).Elem(),
 	//}
+	inType := reflect.TypeOf((*T)(nil)).Elem()
 	return func(c core.Context) {
+		c.Set("$bingo-request-type", inType)
 		// c.Set("$bingo-ctrl-context", controlContext)
 		//ctrl := &Ctrl{
 		//	CtrlContext: controlContext,

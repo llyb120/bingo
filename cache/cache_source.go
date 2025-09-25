@@ -10,14 +10,14 @@ import (
 	"github.com/llyb120/bingo/core"
 )
 
-var redisConn = core.Use[redis.Client]()
-var cfg = core.Use[config.Config]("config")
+var redisConn = core.Use[*redis.Client]()
+var cfg = core.Use[*config.Config]("config")
 
 func Func_2_2[P0, P1, R0, R1 any](fn func(P0, P1) (R0, R1), keyGenerator func(P0, P1) string, ttlFn func(P0, P1) time.Duration) func(P0, P1) (R0, R1) {
-	prefix := cfg.GetString("cache.prefix") + ":" + cfg.GetString("server.environment")
+	prefix := cfg().GetString("cache.prefix") + ":" + cfg().GetString("server.environment")
 	return func(p0 P0, p1 P1) (r0 R0, r1 R1) {
 		key := prefix + ":" + keyGenerator(p0, p1)
-		if bs, err := Get(redisConn, key); err == nil && len(bs) > 0 {
+		if bs, err := Get(redisConn(), key); err == nil && len(bs) > 0 {
 			var res = []any{}
 			err := json.Unmarshal(bs, &res)
 			if err != nil {
@@ -39,7 +39,7 @@ func Func_2_2[P0, P1, R0, R1 any](fn func(P0, P1) (R0, R1), keyGenerator func(P0
 		if _, ok := any(r1).(error); ok {
 			return r0, r1
 		}
-		defer Set(redisConn, key, []any{r0, r1}, ttlFn(p0, p1))
+		defer Set(redisConn(), key, []any{r0, r1}, ttlFn(p0, p1))
 		return r0, r1
 	}
 }

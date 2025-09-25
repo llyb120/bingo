@@ -11,10 +11,10 @@ import (
 
 const funcTemplate = `// Func_{{.ParamCount}}_{{.ReturnCount}}: {{.ParamCount}}个参数，{{.ReturnCount}}个返回值
 func Func_{{.ParamCount}}_{{.ReturnCount}}[{{.TypeParams}}](fn func({{.FuncParams}}) {{.FuncReturns}}, keyGenerator func({{.FuncParams}}) string, ttlFn func({{.FuncParams}}) time.Duration) func({{.FuncParams}}) {{.FuncReturns}} {
-	prefix := cfg.GetString("cache.prefix") + ":" + cfg.GetString("server.environment")
+	prefix := cfg().GetString("cache.prefix") + ":" + cfg().GetString("server.environment")
 	return func({{.NamedParams}}) {{.NamedReturns}} {
 		key := prefix + ":" + keyGenerator({{.ParamNames}})
-		if bs, err := Get(redisConn, key); err == nil && len(bs) > 0 {
+		if bs, err := Get(redisConn(), key); err == nil && len(bs) > 0 {
 			var res = []any{}
 			err := json.Unmarshal(bs, &res)
 			if err != nil {
@@ -26,7 +26,7 @@ func Func_{{.ParamCount}}_{{.ReturnCount}}[{{.TypeParams}}](fn func({{.FuncParam
 		{{.ReturnNames}} = fn({{.ParamNames}})
 		// 检查是否有error，如果有，则不设置缓存
 {{.ErrorChecks}}
-		defer Set(redisConn, key, []any{ {{- .ReturnNames -}} }, ttlFn({{.ParamNames}}))
+		defer Set(redisConn(), key, []any{ {{- .ReturnNames -}} }, ttlFn({{.ParamNames}}))
 		return {{.ReturnNames}}
 	}
 }

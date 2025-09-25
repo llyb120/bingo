@@ -41,6 +41,7 @@ var MysqlStarter core.Starter = func() func() {
 			panic(err)
 		}
 		core.ExportInstance(db, core.RegisterOption{Name: name})
+		core.ExportInstance(&cfg, core.RegisterOption{Name: "mysql-" + name + "-config"})
 		return db
 	}, y.UseAsync, y.UsePanic)
 
